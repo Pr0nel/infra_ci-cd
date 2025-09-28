@@ -1,19 +1,18 @@
 # Infra CI/CD Pipeline
-GitHub Actions
 
 Este repositorio contiene la infraestructura como código (IaC) y el pipeline de CI/CD para desplegar recursos en múltiples proveedores de nube (GCP, AWS, Azure). Utiliza Terraform para gestionar la infraestructura y GitHub Actions para automatizar el proceso de implementación.
 
 ---
 
 ## Tabla de Contenidos
-### [Descripción del Proyecto](#descripción-del-proyecto)
-### [Características Principales](#características-principales)
-### [Requisitos Previos](#requisitos-previos)
-### [Configuración del Proyecto](#configuración-del-proyecto)
-### [Estructura del Proyecto](#estructura-del-proyecto)
-### [Pipeline de CI/CD](#pipeline-de-cicd)
-### [Contribuciones](#contribuciones)
-### [Licencia](#licencia)
+[Descripción del Proyecto](#descripción-del-proyecto)
+[Características Principales](#características-principales)
+[Requisitos Previos](#requisitos-previos)
+[Configuración del Proyecto](#configuración-del-proyecto)
+[Estructura del Proyecto](#estructura-del-proyecto)
+[Pipeline de CI/CD](#pipeline-de-cicd)
+[Contribuciones](#contribuciones)
+[Licencia](#licencia)
 
 ---
 
@@ -73,21 +72,7 @@ Este proyecto implementa un pipeline de CI/CD multi-nube utilizando GitHub Actio
 
 ## Estructura del proyecto
 
-infra_ci-cd/
-├── terraform/
-│   ├── gcp/
-│   │   ├── main.tf          # Configuración principal de Terraform para GCP.
-│   │   ├── variables.tf     # Variables utilizadas en Terraform.
-│   │   └── outputs.tf       # Salidas del estado de Terraform.
-│   ├── aws/                 # Carpeta para configuraciones de AWS.
-│   └── azure/               # Carpeta para configuraciones de Azure.
-├── scripts/
-│   ├── deploy_gcp.sh        # Script de despliegue para GCP.
-│   ├── deploy_aws.sh        # Script de despliegue para AWS.
-│   └── deploy_azure.sh      # Script de despliegue para Azure.
-├── .github/workflows/
-│   └── ci-cd.yml            # Archivo de configuración del pipeline de GitHub Actions.
-└── README.md                # Documentación del proyecto.
+![Estructura del proyecto](images/estructura_del_proyecto.png)
 
 ---
 
@@ -117,4 +102,4 @@ infra_ci-cd/
 ---
 
 ## Licencia
-    Este proyecto está bajo la licencia MIT. Ver el archivo LICENSE para más detalles. Sino, en <https://opensource.org/license/mit>.
+    Este proyecto está bajo los términos de la licencia [MIT](LICENSE).
