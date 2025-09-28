@@ -5,14 +5,16 @@ Este repositorio contiene la infraestructura como código (IaC) y el pipeline de
 ---
 
 ## Tabla de Contenidos
-[Descripción del Proyecto](#descripción-del-proyecto)
-[Características Principales](#características-principales)
-[Requisitos Previos](#requisitos-previos)
-[Configuración del Proyecto](#configuración-del-proyecto)
-[Estructura del Proyecto](#estructura-del-proyecto)
-[Pipeline de CI/CD](#pipeline-de-cicd)
-[Contribuciones](#contribuciones)
-[Licencia](#licencia)
+- [Infra CI/CD Pipeline](#infra-cicd-pipeline)
+  - [Tabla de Contenidos](#tabla-de-contenidos)
+  - [Descripción del Proyecto](#descripción-del-proyecto)
+  - [Características Principales](#características-principales)
+  - [Requisitos Previos](#requisitos-previos)
+  - [Configuración del Proyecto](#configuración-del-proyecto)
+  - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Pipeline de CI/CD](#pipeline-de-cicd)
+  - [Contribuciones](#contribuciones)
+  - [Licencia](#licencia)
 
 ---
 

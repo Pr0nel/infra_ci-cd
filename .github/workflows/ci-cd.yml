@@ -38,7 +38,8 @@ jobs:
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
           echo "Validando credenciales de GCP..."
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" | jq empty || (echo "Error: El formato JSON no es válido" && exit 1)
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > gcp_credentials.json
+          jq empty gcp_credentials.json || (echo "Error: El formato JSON no es válido" && exit 1)
 
       # Autenticación según el proveedor de nube
       - name: Authenticate with GCP
