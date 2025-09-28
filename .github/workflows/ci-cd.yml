@@ -1,0 +1,93 @@
+name: CI/CD Pipeline for Multi-Cloud Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Permite ejecutar manualmente el pipeline desde GitHub
+
+env:
+  CLOUD_PROVIDER: ${{ secrets.CLOUD_PROVIDER }}  # AWS, Azure o GCP
+  TF_VAR_region: ${{ secrets.TF_VAR_REGION }}    # Región específica de la nube
+  TF_VAR_bucket_name: ${{ secrets.TF_VAR_BUCKET_NAME }}  # Nombre del bucket u otros recursos
+  PROJECT_REPO_URL: "https://github.com/Pr0nel/databricks-poc"
+  PROJECT_VERSION: "v1.0.0"  # Versión específica del proyecto
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Paso 1: Checkout del código de infraestructura
+      - name: Checkout Infrastructure Code
+        uses: actions/checkout@v3
+
+      # Paso 2: Configurar Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      # Paso 3: Definir la nube a usar
+      # Paso 3.1: GCP
+      # Instalar jq
+      - name: Install jq
+        if: env.CLOUD_PROVIDER == 'gcp'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      # Validar credenciales de GCP
+      - name: Validate GCP Credentials
+        if: env.CLOUD_PROVIDER == 'gcp'
+        run: |
+          echo "Validando credenciales de GCP..."
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" | jq empty || (echo "Error: El formato JSON no es válido" && exit 1)
+
+      # Autenticación según el proveedor de nube
+      - name: Authenticate with GCP
+        if: env.CLOUD_PROVIDER == 'gcp'  # Solo se ejecuta si el proveedor es GCP
+        run: |
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > gcp_credentials.json
+          gcloud auth activate-service-account --key-file=gcp_credentials.json
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+
+      # Paso 4: Inicializar Terraform según el proveedor de nube
+      - name: Initialize Terraform
+        run: |
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform init
+
+      # Paso 5: Planificar cambios en la infraestructura
+      - name: Terraform Plan
+        run: |
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform plan
+
+      # Paso 6: Aplicar cambios en la infraestructura
+      - name: Terraform Apply
+        run: |
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform apply --auto-approve
+
+      # Paso 7: Mostrar salidas de Terraform
+      - name: Terraform Outputs
+        run: |
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform output
+
+      # Paso 8: Clonar el repositorio del proyecto
+      - name: Clone Project Repository & Checkout Specific Version of Project
+        run: |
+          git clone ${{ env.PROJECT_REPO_URL }} project-code
+          cd project-code
+          git checkout ${{ env.PROJECT_VERSION }}
+
+      # Paso 9: Ejecutar scripts de despliegue según el proveedor de nube
+      - name: Run Deployment Script for AWS
+        if: env.CLOUD_PROVIDER == 'aws'
+        run: bash scripts/deploy_aws.sh
+
+      - name: Run Deployment Script for Azure
+        if: env.CLOUD_PROVIDER == 'azure'
+        run: bash scripts/deploy_azure.sh
+
+      - name: Run Deployment Script for GCP
+        if: env.CLOUD_PROVIDER == 'gcp'
+        run: bash scripts/deploy_gcp.sh
