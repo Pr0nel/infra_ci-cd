@@ -5,12 +5,9 @@
 
 terraform {
   backend "s3" {
-    bucket         = var.bucket_name  # Cambiar esto
+    # Bucket, region, dynamodb_table se configura en rutine, usando secret de GitHub Actions. TF_BACKEND_BUCKET, TF_VAR_REGION, TF_BACKEND_DYNAMODB_TABLE.
     key            = "databricks-poc/terraform.tfstate"
-    region         = var.region
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"  # Para locking
-    
     # Opcional: versionado del state
     versioning     = true
   }

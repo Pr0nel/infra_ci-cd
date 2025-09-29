@@ -10,6 +10,7 @@ env:
   CLOUD_PROVIDER: ${{ secrets.CLOUD_PROVIDER }}  # AWS, Azure o GCP
   TF_VAR_region: ${{ secrets.TF_VAR_REGION }}    # Región específica de la nube
   TF_VAR_bucket_name: ${{ secrets.TF_VAR_BUCKET_NAME }}  # Nombre del bucket u otros recursos
+  TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}  # Nombre del bucket donde Terraform guarda su estado (permanente)
   PROJECT_REPO_URL: "https://github.com/Pr0nel/databricks-poc"
   PROJECT_VERSION: "v1.0.0"  # Versión específica del proyecto
 
@@ -61,6 +62,7 @@ jobs:
           set -euo pipefail
           echo "Validando credenciales de AWS..."
           aws sts get-caller-identity
+          echo "Credenciales de AWS validadas"
 
       # Configuración específica para Azure
       - name: Azure Login
@@ -75,6 +77,7 @@ jobs:
           set -euo pipefail
           echo "Validando credenciales de Azure..."
           az account show
+          echo "Credenciales de Azure validadas"
 
       # Configuración específica para GCP
       - name: Authenticate to Google Cloud
@@ -112,7 +115,37 @@ jobs:
         run: |
           set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
-          terraform init -input=false -upgrade -reconfigure
+          echo "Inicializando Terraform para ${{ env.CLOUD_PROVIDER }}..."
+          case "${{ env.CLOUD_PROVIDER }}" in
+            gcp)
+              terraform init \
+                -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+                -input=false \
+                -upgrade \
+                -reconfigure
+              ;;
+            aws)
+              terraform init \
+                -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+                -backend-config="region=${{ env.TF_VAR_region }}" \
+                -backend-config="dynamodb_table=${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}" \
+                -input=false \
+                -upgrade \
+                -reconfigure
+              ;;
+            azure)
+              terraform init \
+                -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+                -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RESOURCE_GROUP }}" \
+                -input=false \
+                -upgrade \
+                -reconfigure
+              ;;
+            *)
+              echo "❌ Error: Proveedor de nube no soportado: ${{ env.CLOUD_PROVIDER }}"
+              exit 1
+              ;;
+          esac
           echo "Terraform inicializado correctamente con backend remoto"
 
       # Paso 8: Validar configuración de Terraform
@@ -209,8 +242,5 @@ jobs:
           fi
           if [[ -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan ]]; then
             rm -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan
-          fi
-          if [[ -d terraform/${{ env.CLOUD_PROVIDER }}/.terraform ]]; then
-            rm -rf terraform/${{ env.CLOUD_PROVIDER }}/.terraform
           fi
           echo "Limpieza completada"

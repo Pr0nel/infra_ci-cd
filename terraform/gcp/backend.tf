@@ -5,7 +5,7 @@
 
 terraform {
   backend "gcs" {
-    bucket  = var.bucket_name
+    # Bucket se configura en rutine, usando secret de GitHub Actions.
     prefix  = "databricks-poc/state"
   }
 }
