@@ -2,7 +2,6 @@
 # scripts/setup/setup-backend.sh
 # Script para crear el bucket de backend de Terraform
 # Se ejecuta automáticamente en el pipeline antes de terraform init
-set -euo pipefail
 # ============================================
 # Función para logging
 # ============================================
@@ -167,7 +166,6 @@ setup_azure_backend() {
 # Main
 # ============================================
 main() {
-    log_info "Iniciando configuración del backend..."
     log_info "Proveedor: ${CLOUD_PROVIDER}"
     log_info "Bucket/Storage: ${BUCKET_NAME}"
     log_info "Región: ${REGION}"   
@@ -187,6 +185,5 @@ main() {
             exit 1
             ;;
     esac
-    log_success "Backend configurado exitosamente"
 }
 main "$@"

@@ -184,33 +184,35 @@ jobs:
         if: env.CLOUD_PROVIDER == 'gcp'
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Assign IAM Roles to Service Account
+      - name: Enable Cloud Resource Manager API
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
           set -euo pipefail
-          echo "Asignando roles a la cuenta de servicio..."
-          gcloud projects add-iam-policy-binding "${{ secrets.GCP_PROJECT_ID }}" \
-              --member="serviceAccount:${{ secrets.GCP_SERVICE_ACCOUNT }}" \
-              --role="roles/storage.admin"
-          echo "Permisos otorgados. Verificando..."
-          gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-            --flatten="bindings[].members" \
-            --filter="bindings.members:serviceAccount:${GCP_SERVICE_ACCOUNT}" \
-            --format="table(bindings.role)"
+          if ! gcloud services list --enabled | grep -q cloudresourcemanager.googleapis.com; then
+            echo "Habilitando la API de Cloud Resource Manager..."
+            gcloud services enable cloudresourcemanager.googleapis.com --project=${{ secrets.GCP_PROJECT_ID }}
+          else
+            echo "La API de Cloud Resource Manager habilitada correctamente."
+          fi
 
       - name: Setup GCP Backend Bucket
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
-          bash scripts/setup/setup-backend.sh \
-            "${{ env.CLOUD_PROVIDER }}" \
-            "${{ env.TF_BACKEND_BUCKET }}" \
-            "${{ env.TF_VAR_region }}" \
-            "${{ secrets.GCP_PROJECT_ID }}"
-          echo "Verificando acceso al bucket..."
-          gsutil ls gs://${BUCKET_NAME} >/dev/null 2>&1 || {
-            echo "Advertencia: No se puede acceder al bucket"
-            echo "Verifica que el Service Account tenga permisos de Storage Object Admin"
-          }
+          set -euo pipefail
+          echo "Iniciando configuración del backend..."
+          BUCKET_NAME="${{ env.TF_BACKEND_BUCKET }}"
+          LOCATION="${{ env.TF_VAR_region }}"
+          PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
+          echo "Configurando bucket de backend..."
+          if gsutil ls "gs://${BUCKET_NAME}" &>/dev/null; then
+            echo "Bucket gs://${BUCKET_NAME} ya existe"
+          else
+            echo "Creando bucket gs://${BUCKET_NAME}..."
+            gsutil mb -p "${PROJECT_ID}" -l "${LOCATION}" "gs://${BUCKET_NAME}"
+            gsutil versioning set on "gs://${BUCKET_NAME}"
+            echo "Bucket creado exitosamente"
+          fi
+          echo "Backend configurado correctamente"
 
       - name: Verify GCP Authentication
         if: env.CLOUD_PROVIDER == 'gcp'
@@ -240,14 +242,14 @@ jobs:
           case "${{ env.CLOUD_PROVIDER }}" in
             gcp)
               terraform init \
-                -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+                -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
                 -input=false \
                 -upgrade \
                 -reconfigure
               ;;
             aws)
               terraform init \
-                -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+                -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
                 -backend-config="region=${{ env.TF_VAR_region }}" \
                 -backend-config="dynamodb_table=${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}" \
                 -input=false \
@@ -311,42 +313,27 @@ jobs:
           git checkout ${{ env.PROJECT_VERSION }}
           echo "Código del proyecto clonado y cambiado a versión ${{ env.PROJECT_VERSION }}"
 
-      # Paso 13: Validar scripts de despliegue
-      - name: Validate Deployment Scripts
-        run: |
-          set -euo pipefail
-          SCRIPT_PATH="scripts/deploy_${{ env.CLOUD_PROVIDER }}.sh"
-          if [[ ! -f "$SCRIPT_PATH" ]]; then
-            echo "Error: No existe el script de despliegue $SCRIPT_PATH"
-            exit 1
-          fi
-          if [[ ! -x "$SCRIPT_PATH" ]]; then
-            echo "Haciendo ejecutable el script de despliegue..."
-            chmod +x "$SCRIPT_PATH"
-          fi
-          echo "Script de despliegue validado: $SCRIPT_PATH"
-
-      # Paso 14: Ejecutar scripts de despliegue según el proveedor de nube
+      # Paso 13: Validar y ejecuta scripts de despliegue según el proveedor de nube
       - name: Run Deployment Script
         run: |
           set -euo pipefail
-          echo "Ejecutando despliegue para ${{ env.CLOUD_PROVIDER }}..."
           SCRIPT_PATH="scripts/deploy_${{ env.CLOUD_PROVIDER }}.sh"
-          if [[ ! -f "$SCRIPT_PATH" ]]; then
-            echo "Error: No existe el script de despliegue $SCRIPT_PATH"
+          if [[ ! -f "${SCRIPT_PATH}" ]]; then
+            echo "Error: No existe el script de despliegue ${SCRIPT_PATH}"
             exit 1
           fi
           echo "Verificando la sintaxis del script..."
-          bash -n "$SCRIPT_PATH"
-          if [[ ! -x "$SCRIPT_PATH" ]]; then
+          bash -n "${SCRIPT_PATH}"
+          if [[ ! -x "${SCRIPT_PATH}" ]]; then
             echo "Haciendo ejecutable el script de despliegue..."
-            chmod +x "$SCRIPT_PATH"
+            chmod +x "${SCRIPT_PATH}"
           fi
-          echo "Ejecutando el script de despliegue..."
-          bash "$SCRIPT_PATH"
+          echo "Script de despliegue validado: ${SCRIPT_PATH}"
+          echo "Ejecutando despliegue para ${{ env.CLOUD_PROVIDER }}..."
+          bash "${SCRIPT_PATH}"
           echo "Despliegue para ${{ env.CLOUD_PROVIDER }} completado"
 
-      # Paso 15: Cleanup
+      # Paso 14: Cleanup
       - name: Cleanup Temporary Files
         if: always()
         run: |
