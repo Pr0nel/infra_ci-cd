@@ -16,79 +16,208 @@ env:
 jobs:
   deploy-infrastructure:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       # Paso 1: Checkout del código de infraestructura
       - name: Checkout Infrastructure Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Paso 2: Configurar Terraform
+      # Paso 2: Validar proveedor de nube
+      - name: Validate Cloud Provider
+        run: |
+          set -euo pipefail
+          if [[ ! "${{ env.CLOUD_PROVIDER }}" =~ ^(aws|azure|gcp)$ ]]; then
+            echo "Error: CLOUD_PROVIDER debe ser 'aws', 'azure' o 'gcp'"
+            exit 1
+          fi
+          echo "Proveedor de nube válido: ${{ env.CLOUD_PROVIDER }}"
+
+      # Paso 3: Configurar Terraform
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
 
-      # Paso 3: Definir la nube a usar
-      # Paso 3.1: GCP
-      # Instalar jq
-      - name: Install jq
+      # Paso 4: Instalar herramientas comunes
+      - name: Install Common Tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y jq curl unzip
+          echo "Herramientas instaladas correctamente"
+
+      # Paso 5: Definir la nube a usar
+
+      # Configuración específica para AWS
+      - name: Configure AWS CLI
+        if: env.CLOUD_PROVIDER == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.TF_VAR_region }}
+
+      - name: Validate AWS Credentials
+        if: env.CLOUD_PROVIDER == 'aws'
+        run: |
+          set -euo pipefail
+          echo "Validando credenciales de AWS..."
+          aws sts get-caller-identity
+
+      # Configuración específica para Azure
+      - name: Azure Login
+        if: env.CLOUD_PROVIDER == 'azure'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate Azure Credentials
+        if: env.CLOUD_PROVIDER == 'azure'
+        run: |
+          set -euo pipefail
+          echo "Validando credenciales de Azure..."
+          az account show
+
+      # Configuración específica para GCP
+      - name: Setup Google Cloud CLI
         if: env.CLOUD_PROVIDER == 'gcp'
-        run: sudo apt-get update && sudo apt-get install -y jq
+        uses: google-github-actions/setup-gcloud@v2
 
       # Validar credenciales de GCP
       - name: Validate GCP Credentials
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
+          set -euo pipefail
           echo "Validando credenciales de GCP..."
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > gcp_credentials.json
-          jq empty gcp_credentials.json || (echo "Error: El formato JSON no es válido" && exit 1)
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > /tmp/gcp_credentials.json
+          if ! jq empty /tmp/gcp_credentials.json; then
+            echo "Error: El formato JSON no es válido"
+            rm -f /tmp/gcp_credentials.json
+            exit 1
+          fi
 
       # Autenticación según el proveedor de nube
       - name: Authenticate with GCP
         if: env.CLOUD_PROVIDER == 'gcp'  # Solo se ejecuta si el proveedor es GCP
         run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > gcp_credentials.json
-          gcloud auth activate-service-account --key-file=gcp_credentials.json
+          set -euo pipefail
+          gcloud auth activate-service-account --key-file=/tmp/gcp_credentials.json
           gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+          gcloud auth list --filter=status:ACTIVE
+          rm -f /tmp/gcp_credentials.json
 
-      # Paso 4: Inicializar Terraform según el proveedor de nube
+      # Paso 6: Validar estructura de directorios de Terraform
+      - name: Validate Terraform Structure
+        run: |
+          set -euo pipefail
+          if [[ ! -d "terraform/${{ env.CLOUD_PROVIDER }}" ]]; then
+            echo "Error: No existe el directorio terraform/${{ env.CLOUD_PROVIDER }}"
+            exit 1
+          fi
+          echo "Estructura de Terraform validada para ${{ env.CLOUD_PROVIDER }}"
+
+      # Paso 7: Inicializar Terraform según el proveedor de nube
       - name: Initialize Terraform
         run: |
+          set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
-          terraform init
+          terraform init -input=false
+          echo "Terraform inicializado correctamente"
 
-      # Paso 5: Planificar cambios en la infraestructura
+      # Paso 8: Validar configuración de Terraform
+      - name: Validate Terraform Configuration
+        run: |
+          set -euo pipefail
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform validate
+          echo "Configuración de Terraform validada"
+
+      # Paso 9: Planificar cambios en la infraestructura
       - name: Terraform Plan
         run: |
+          set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
-          terraform plan
+          terraform plan -input=false -out=tfplan
+          echo "Plan de Terraform generado"
 
-      # Paso 6: Aplicar cambios en la infraestructura
+      # Paso 10: Aplicar cambios en la infraestructura
       - name: Terraform Apply
         run: |
+          set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
-          terraform apply --auto-approve
+          terraform apply -input=false tfplan
+          echo "Infraestructura desplegada exitosamente"
 
-      # Paso 7: Mostrar salidas de Terraform
+      # Paso 11: Mostrar salidas de Terraform
       - name: Terraform Outputs
         run: |
+          set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
+          terraform output -json > ../../terraform_outputs.json
           terraform output
+          echo "Outputs de Terraform guardados"
 
-      # Paso 8: Clonar el repositorio del proyecto
+      # Paso 12: Clonar el repositorio del proyecto
       - name: Clone Project Repository & Checkout Specific Version of Project
         run: |
+          set -euo pipefail
           git clone ${{ env.PROJECT_REPO_URL }} project-code
           cd project-code
           git checkout ${{ env.PROJECT_VERSION }}
+          echo "Código del proyecto clonado y cambiado a versión ${{ env.PROJECT_VERSION }}"
 
-      # Paso 9: Ejecutar scripts de despliegue según el proveedor de nube
+      # Paso 13: Validar scripts de despliegue
+      - name: Validate Deployment Scripts
+        run: |
+          set -euo pipefail
+          SCRIPT_PATH="scripts/deploy_${{ env.CLOUD_PROVIDER }}.sh"
+          if [[ ! -f "$SCRIPT_PATH" ]]; then
+            echo "Error: No existe el script de despliegue $SCRIPT_PATH"
+            exit 1
+          fi
+          if [[ ! -x "$SCRIPT_PATH" ]]; then
+            echo "Haciendo ejecutable el script de despliegue..."
+            chmod +x "$SCRIPT_PATH"
+          fi
+          echo "Script de despliegue validado: $SCRIPT_PATH"
+
+
+      # Paso 14: Ejecutar scripts de despliegue según el proveedor de nube
       - name: Run Deployment Script for AWS
         if: env.CLOUD_PROVIDER == 'aws'
-        run: bash scripts/deploy_aws.sh
+        run: |
+          set -euo pipefail
+          echo "Ejecutando despliegue para AWS..."
+          bash scripts/deploy_aws.sh
+          echo "Despliegue AWS completado"
 
       - name: Run Deployment Script for Azure
         if: env.CLOUD_PROVIDER == 'azure'
-        run: bash scripts/deploy_azure.sh
+        run: |
+          set -euo pipefail
+          echo "Ejecutando despliegue para Azure..."
+          bash scripts/deploy_azure.sh
+          echo "Despliegue Azure completado"
 
       - name: Run Deployment Script for GCP
         if: env.CLOUD_PROVIDER == 'gcp'
-        run: bash scripts/deploy_gcp.sh
+        run: |
+          set -euo pipefail
+          echo "Ejecutando despliegue para GCP..."
+          bash scripts/deploy_gcp.sh
+          echo "Despliegue GCP completado"
+
+      # Paso 15: Cleanup
+      - name: Cleanup Temporary Files
+        if: always()
+        run: |
+          set +e 
+          echo "Limpiando archivos temporales..."
+          if [[ -f /tmp/gcp_credentials.json ]]; then
+            rm -f /tmp/gcp_credentials.json
+          fi
+          if [[ -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan ]]; then
+            rm -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan
+          fi
+          if [[ -d terraform/${{ env.CLOUD_PROVIDER }}/.terraform ]]; then
+            rm -rf terraform/${{ env.CLOUD_PROVIDER }}/.terraform
+          fi
+          echo "Limpieza completada"
