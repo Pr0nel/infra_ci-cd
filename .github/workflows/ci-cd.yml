@@ -184,17 +184,6 @@ jobs:
         if: env.CLOUD_PROVIDER == 'gcp'
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Enable Cloud Resource Manager API
-        if: env.CLOUD_PROVIDER == 'gcp'
-        run: |
-          set -euo pipefail
-          if ! gcloud services list --enabled | grep -q cloudresourcemanager.googleapis.com; then
-            echo "Habilitando la API de Cloud Resource Manager..."
-            gcloud services enable cloudresourcemanager.googleapis.com --project=${{ secrets.GCP_PROJECT_ID }}
-          else
-            echo "La API de Cloud Resource Manager habilitada correctamente."
-          fi
-
       - name: Setup GCP Backend Bucket
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
