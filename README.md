@@ -1,6 +1,6 @@
 # Infra CI/CD Pipeline
 
-[GitHub Actions](https://img.shields.io/github/actions/workflow/status/Pr0nel/infra_ci-cd/ci-cd.yml?label=CI/CD&logo=github) [Terraform](https://img.shields.io/badge/Terraform-1.5+-purple.svg) [Cloud](https://img.shields.io/badge/Cloud-AWS%20%7C%20Azure%20%7C%20GCP-blue.svg)
+[![CI/CD status](https://img.shields.io/github/actions/workflow/status/Pr0nel/infra_ci-cd/ci-cd.yml?label=CI/CD&logo=github)](https://github.com/Pr0nel/infra_ci-cd/actions/) [![Terraform](https://img.shields.io/badge/Terraform-1.5+-purple.svg)](https://www.terraform.io/) [![Multi-Cloud](https://img.shields.io/badge/Cloud-AWS%20%7C%20Azure%20%7C%20GCP-blue.svg)](https://github.com/Pr0nel/infra_ci-cd)
 
 Este repositorio contiene la infraestructura como código (IaC) y el pipeline de CI/CD para desplegar recursos en múltiples proveedores de nube (GCP, AWS, Azure). Utiliza Terraform para gestionar la infraestructura y GitHub Actions para automatizar el proceso de implementación.
 
