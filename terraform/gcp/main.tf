@@ -30,20 +30,16 @@ resource "google_storage_bucket" "data_bucket" {
 resource "google_dataproc_cluster" "dataproc_cluster" {
   name     = "dataproc-cluster-${random_id.suffix.hex}"
   region   = var.region
-
   cluster_config {
     staging_bucket = google_storage_bucket.data_bucket.name
-
     master_config {
       num_instances = 1
       machine_type  = var.machine_type_master
     }
-
     worker_config {
       num_instances = 2
       machine_type  = var.machine_type_worker
     }
-
     software_config {
       image_version = "2.0-debian10"
       optional_components = ["JUPYTER"]
@@ -54,4 +50,12 @@ resource "google_dataproc_cluster" "dataproc_cluster" {
 # Generador de sufijo aleatorio para nombres únicos
 resource "random_id" "suffix" {
   byte_length = 4
+}
+
+# Integración con Databricks
+resource "databricks_workspace" "example" {
+  provider     = databricks.gcp
+  account_id   = var.databricks_account_id
+  location     = var.region
+  workspace_name = "databricks-poc"
 }

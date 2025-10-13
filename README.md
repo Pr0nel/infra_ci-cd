@@ -6,6 +6,16 @@ Este repositorio contiene la infraestructura como código (IaC) y el pipeline de
 
 ---
 
+# 📖 Descripción del Proyecto
+
+Este proyecto implementa un pipeline de CI/CD multi-nube que automatiza el despliegue de infraestructura utilizando:
+
+- Terraform para infraestructura como código (IaC)
+- GitHub Actions para automatización de CI/CD
+- Múltiples proveedores de nube (AWS, Azure, GCP)
+
+El pipeline se encarga de validar, planificar y aplicar cambios en la infraestructura de manera segura y consistente, siguiendo las mejores prácticas de DevOps.
+
 - [Infra CI/CD Pipeline](#infra-cicd-pipeline)
 - [📖 Descripción del Proyecto](#-descripción-del-proyecto)
 - [✨ Características Principales](#-características-principales)
@@ -23,18 +33,6 @@ Este repositorio contiene la infraestructura como código (IaC) y el pipeline de
 - [🎯 Pipeline de CI/CD](#-pipeline-de-cicd)
 - [🤝 Contribuciones](#-contribuciones)
 - [📄 Licencia](#-licencia)
-
----
-
-# 📖 Descripción del Proyecto
-
-Este proyecto implementa un pipeline de CI/CD multi-nube que automatiza el despliegue de infraestructura utilizando:
-
-- Terraform para infraestructura como código (IaC)
-- GitHub Actions para automatización de CI/CD
-- Múltiples proveedores de nube (AWS, Azure, GCP)
-
-El pipeline se encarga de validar, planificar y aplicar cambios en la infraestructura de manera segura y consistente, siguiendo las mejores prácticas de DevOps.
 
 ---
 
@@ -143,27 +141,27 @@ infra_ci-cd/
 ```
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                     GitHub Repository                      │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │         Infrastructure Code (Terraform)              │  │
-│  │  • terraform/aws/     • terraform/azure/             │  │
-│  │  • terraform/gcp/     • scripts/                     │  │
-│  └──────────────────────────────────────────────────────┘  │
-└──────────────────────┬─────────────────────────────────────┘
-                       │ Git Push / Manual Trigger
-                       ▼
-┌───────────────────────────────────────────────────────────┐
-│                   GitHub Actions Runner                   │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │  1. Validate Cloud Provider & Credentials           │  │
-│  │  2. Setup Terraform & Cloud CLI                     │  │
-│  │  3. Initialize Terraform (with remote backend)      │  │
-│  │  4. Plan Infrastructure Changes                     │  │
-│  │  5. Apply Changes (create/update resources)         │  │
-│  │  6. Execute Deployment Scripts                      │  │
-│  └─────────────────────────────────────────────────────┘  │
-└──────────────┬────────────┬────────────┬──────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                     GitHub Repository                  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │         Infrastructure Code (Terraform)          │  │
+│  │  • terraform/aws/     • terraform/azure/         │  │
+│  │  • terraform/gcp/     • scripts/                 │  │
+│  └──────────────────────────────────────────────────┘  │
+└───────────────────────────┬────────────────────────────┘
+                            │ Git Push / Manual Trigger
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│                   GitHub Actions Runner                │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  1. Validate Cloud Provider & Credentials        │  │
+│  │  2. Setup Terraform & Cloud CLI                  │  │
+│  │  3. Initialize Terraform (with remote backend)   │  │
+│  │  4. Plan Infrastructure Changes                  │  │
+│  │  5. Apply Changes (create/update resources)      │  │
+│  │  6. Execute Deployment Scripts                   │  │
+│  └──────────────────────────────────────────────────┘  │
+└──────────────┬────────────┬────────────┬───────────────┘
                │            │            │
                ▼            ▼            ▼
        ┌───────────┐  ┌───────────┐  ┌───────────┐
@@ -195,17 +193,17 @@ El pipeline sigue los siguientes pasos:
   1. Haz un fork del repositorio.
    
   2. Crea una nueva rama:
-    ```bash
+    ```
     git checkout -b feature/nueva-funcionalidad
     ```
 
   3. Realiza tus cambios y haz commit:
-    ```bash
+    ```
     git commit -m "feat: Añadir nueva funcionalidad"
     ```
 
   4. Sube tus cambios:
-    ```bash
+    ```
     git push origin feature/nueva-funcionalidad
     ```
 

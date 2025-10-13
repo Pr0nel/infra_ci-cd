@@ -13,19 +13,15 @@ env:
   TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}  # Nombre del bucket donde Terraform guarda su estado (permanente)
   PROJECT_REPO_URL: "https://github.com/Pr0nel/databricks-poc"
   PROJECT_VERSION: "v1.0.0"  # Versión específica del proyecto
+  DATA_PLATFORM: ""  # Se detectará automáticamente
+  ENABLE_ROLLBACK: "true"
 
 jobs:
-  deploy-infrastructure:
+  validate-cloud-provider:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
     steps:
-      # Paso 1: Checkout del código de infraestructura
-      - name: Checkout Infrastructure Code
-        uses: actions/checkout@v4
-
-      # Paso 2: Validar proveedor de nube
-      - name: Validate Cloud Provider
+      # Paso 1: Validar proveedor de nube
+      - name: Validate Cloud Provider & Required Secrets
         run: |
           set -euo pipefail
           if [[ ! "${{ env.CLOUD_PROVIDER }}" =~ ^(aws|azure|gcp)$ ]]; then
@@ -33,19 +29,30 @@ jobs:
             exit 1
           fi
           echo "Proveedor de nube válido: ${{ env.CLOUD_PROVIDER }}"
+          case "${{ env.CLOUD_PROVIDER }}" in
+            aws)
+              [[ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]] || { echo "Falta AWS_ACCESS_KEY_ID"; exit 1; }
+              [[ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]] || { echo "Falta AWS_SECRET_ACCESS_KEY"; exit 1; }
+              [[ -n "${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}" ]] || { echo "Falta TF_BACKEND_DYNAMODB_TABLE"; exit 1; }
+              ;;
+            azure)
+              [[ -n "${{ secrets.AZURE_CREDENTIALS }}" ]] || { echo "Falta AZURE_CREDENTIALS"; exit 1; }
+              [[ -n "${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" ]] || { echo "Falta TF_BACKEND_STORAGE_ACCOUNT"; exit 1; }
+              [[ -n "${{ secrets.TF_BACKEND_RESOURCE_GROUP }}" ]] || { echo "Falta TF_BACKEND_RESOURCE_GROUP"; exit 1; }
+              [[ -n "${{ secrets.TF_BACKEND_CONTAINER_NAME }}" ]] || { echo "Falta TF_BACKEND_CONTAINER_NAME"; exit 1; }
+              ;;
+            gcp)
+              [[ -n "${{ secrets.GCP_PROJECT_ID }}" ]] || { echo "Falta GCP_PROJECT_ID"; exit 1; }
+              [[ -n "${{ secrets.GCP_CREDENTIALS_JSON }}" ]] || { echo "Falta GCP_CREDENTIALS_JSON"; exit 1; }
+              ;;
+          esac
+          echo "Todos los secretos requeridos están presentes"
 
-      # Paso 3: Configurar Terraform
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      # Paso 4: Instalar herramientas comunes
-      - name: Install Common Tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update && sudo apt-get install -y jq curl unzip
-          echo "Herramientas instaladas correctamente"
-
-      # Paso 5: Definir la nube a usar
+  setup-cloud-provider:
+    needs: validate-cloud-provider
+    runs-on: ubuntu-latest
+    steps:
+      # Paso 2: Definir la nube a usar
 
       # Configuración específica para AWS
       - name: Configure AWS CLI
@@ -54,7 +61,15 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.TF_VAR_region }}
+          aws-region: ${{ env.TF_VAR_region }}      
+
+      - name: Validate AWS Credentials
+        if: env.CLOUD_PROVIDER == 'aws'
+        run: |
+          set -euo pipefail
+          echo "Validando credenciales de AWS..."
+          aws sts get-caller-identity
+          echo "Credenciales de AWS validadas"
 
       - name: Setup AWS Backend Bucket
         if: env.CLOUD_PROVIDER == 'aws'
@@ -100,20 +115,20 @@ jobs:
             echo "Tabla DynamoDB creada exitosamente"
           fi
 
-      - name: Validate AWS Credentials
-        if: env.CLOUD_PROVIDER == 'aws'
-        run: |
-          set -euo pipefail
-          echo "Validando credenciales de AWS..."
-          aws sts get-caller-identity
-          echo "Credenciales de AWS validadas"
-
       # Configuración específica para Azure
       - name: Azure Login
         if: env.CLOUD_PROVIDER == 'azure'
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate Azure Credentials
+        if: env.CLOUD_PROVIDER == 'azure'
+        run: |
+          set -euo pipefail
+          echo "Validando credenciales de Azure..."
+          az account show
+          echo "Credenciales de Azure validadas"
 
       - name: Setup Azure Backend Storage
         if: env.CLOUD_PROVIDER == 'azure'
@@ -123,7 +138,7 @@ jobs:
           
           RESOURCE_GROUP="${{ secrets.TF_BACKEND_RESOURCE_GROUP }}"
           STORAGE_ACCOUNT="${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}"
-          CONTAINER_NAME="tfstate"
+          CONTAINER_NAME="${{ secrets.TF_BACKEND_CONTAINER_NAME }}"
           LOCATION="${{ env.TF_VAR_region }}"
           
           if az group show --name ${RESOURCE_GROUP} &>/dev/null; then
@@ -164,14 +179,6 @@ jobs:
             echo "Container creado exitosamente"
           fi
 
-      - name: Validate Azure Credentials
-        if: env.CLOUD_PROVIDER == 'azure'
-        run: |
-          set -euo pipefail
-          echo "Validando credenciales de Azure..."
-          az account show
-          echo "Credenciales de Azure validadas"
-
       # Configuración específica para GCP
       - name: Authenticate to Google Cloud
         if: env.CLOUD_PROVIDER == 'gcp'
@@ -188,11 +195,9 @@ jobs:
         if: env.CLOUD_PROVIDER == 'gcp'
         run: |
           set -euo pipefail
-          echo "Iniciando configuración del backend..."
           BUCKET_NAME="${{ env.TF_BACKEND_BUCKET }}"
           LOCATION="${{ env.TF_VAR_region }}"
           PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
-          echo "Configurando bucket de backend..."
           if gsutil ls "gs://${BUCKET_NAME}" &>/dev/null; then
             echo "Bucket gs://${BUCKET_NAME} ya existe"
           else
@@ -201,7 +206,6 @@ jobs:
             gsutil versioning set on "gs://${BUCKET_NAME}"
             echo "Bucket creado exitosamente"
           fi
-          echo "Backend configurado correctamente"
 
       - name: Verify GCP Authentication
         if: env.CLOUD_PROVIDER == 'gcp'
@@ -211,6 +215,26 @@ jobs:
           echo "Autenticado como: $(gcloud config get-value account)"
           echo "Proyecto: $(gcloud config get-value project)"
           echo "Región configurada: ${{ env.TF_VAR_region }}"
+
+  deploy-infrastructure:
+    needs: setup-cloud-provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Paso 3: Checkout del código de infraestructura
+      - name: Checkout Infrastructure Code
+        uses: actions/checkout@v4
+
+      # Paso 4: Configurar Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # Paso 5: Instalar herramientas comunes
+      - name: Install Common Tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y jq curl unzip
+          echo "Herramientas instaladas correctamente"
 
       # Paso 6: Validar estructura de directorios de Terraform
       - name: Validate Terraform Structure
@@ -233,8 +257,7 @@ jobs:
               terraform init \
                 -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
                 -input=false \
-                -upgrade \
-                -reconfigure
+                -upgrade
               ;;
             aws)
               terraform init \
@@ -242,19 +265,17 @@ jobs:
                 -backend-config="region=${{ env.TF_VAR_region }}" \
                 -backend-config="dynamodb_table=${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}" \
                 -input=false \
-                -upgrade \
-                -reconfigure
+                -upgrade
               ;;
             azure)
               terraform init \
                 -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
                 -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RESOURCE_GROUP }}" \
                 -input=false \
-                -upgrade \
-                -reconfigure
+                -upgrade
               ;;
             *)
-              echo "❌ Error: Proveedor de nube no soportado: ${{ env.CLOUD_PROVIDER }}"
+              echo "Error: Proveedor de nube no soportado: ${{ env.CLOUD_PROVIDER }}"
               exit 1
               ;;
           esac
@@ -281,7 +302,7 @@ jobs:
         run: |
           set -euo pipefail
           cd terraform/${{ env.CLOUD_PROVIDER }}
-          terraform apply -input=false tfplan
+          terraform apply -input=false -auto-approve tfplan
           echo "Infraestructura desplegada exitosamente"
 
       # Paso 11: Mostrar salidas de Terraform
@@ -293,6 +314,42 @@ jobs:
           terraform output
           echo "Outputs de Terraform guardados"
 
+      - name: Upload Terraform Outputs as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs
+          path: terraform_outputs.json
+          retention-days: 7
+
+      - name: Extract Storage Resources
+        run: |
+          set -euo pipefail
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          echo "Extrayendo recursos de almacenamiento..."
+          case "${{ env.CLOUD_PROVIDER }}" in
+            aws)
+              BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
+              BUCKET_ARN=$(terraform output -raw s3_bucket_arn 2>/dev/null || echo "")
+              echo "S3_BUCKET=${BUCKET_NAME}" >> $GITHUB_ENV
+              echo "S3_BUCKET_ARN=${BUCKET_ARN}" >> $GITHUB_ENV
+              ;;
+            azure)
+              STORAGE_ACCOUNT=$(terraform output -raw storage_account_name 2>/dev/null || echo "")
+              CONTAINER=$(terraform output -raw container_name 2>/dev/null || echo "")
+              echo "AZURE_STORAGE_ACCOUNT=${STORAGE_ACCOUNT}" >> $GITHUB_ENV
+              echo "AZURE_CONTAINER=${CONTAINER}" >> $GITHUB_ENV
+              ;;
+            gcp)
+              BUCKET_NAME=$(terraform output -raw gcs_bucket_name 2>/dev/null || echo "")
+              echo "GCS_BUCKET=${BUCKET_NAME}" >> $GITHUB_ENV
+              ;;
+          esac
+          echo "Recursos de almacenamiento extraídos"
+
+  clone-project:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    steps:
       # Paso 12: Clonar el repositorio del proyecto
       - name: Clone Project Repository & Checkout Specific Version of Project
         run: |
@@ -302,8 +359,83 @@ jobs:
           git checkout ${{ env.PROJECT_VERSION }}
           echo "Código del proyecto clonado y cambiado a versión ${{ env.PROJECT_VERSION }}"
 
+      - name: Upload Project Code as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-code
+          path: project-code/
+          retention-days: 7
+
+  detect-data-platform:
+    needs: clone-project
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.detect.outputs.platform }}
+      platform_version: ${{ steps.detect.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download project artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: project-code
+          path: project-code
+        continue-on-error: true
+
+      - name: Detect Data Platform
+        id: detect
+        run: |
+          set -euo pipefail
+          REPO_URL="${{ env.PROJECT_REPO_URL }}"
+          if [[ "${REPO_URL}" == *"databricks"* ]] || [[ -f "project-code/databricks.yml" ]]; then
+            echo "platform=databricks" >> $GITHUB_OUTPUT
+            echo "version=latest" >> $GITHUB_OUTPUT
+            echo "Plataforma detectada: Databricks"
+          elif [[ "${REPO_URL}" == *"snowflake"* ]] || [[ -f "project-code/snowflake.yml" ]]; then
+            echo "platform=snowflake" >> $GITHUB_OUTPUT
+            echo "version=latest" >> $GITHUB_OUTPUT
+            echo "Plataforma detectada: Snowflake"
+          else
+            echo "Error: No se pudo detectar la plataforma de datos"
+            echo "Verifica que PROJECT_REPO_URL contenga 'databricks' o 'snowflake'"
+            exit 1
+          fi
+
+      - name: Validate Platform Secrets
+        run: |
+          set -euo pipefail
+          PLATFORM="${{ steps.detect.outputs.platform }}"
+          case "${PLATFORM}" in
+            databricks)
+              [[ -n "${{ secrets.DATABRICKS_HOST }}" ]] || { echo "Falta DATABRICKS_HOST"; exit 1; }
+              [[ -n "${{ secrets.DATABRICKS_TOKEN }}" ]] || { echo "Falta DATABRICKS_TOKEN"; exit 1; }
+              ;;
+            snowflake)
+              [[ -n "${{ secrets.SNOWFLAKE_ACCOUNT }}" ]] || { echo "Falta SNOWFLAKE_ACCOUNT"; exit 1; }
+              [[ -n "${{ secrets.SNOWFLAKE_USER }}" ]] || { echo "Falta SNOWFLAKE_USER"; exit 1; }
+              [[ -n "${{ secrets.SNOWFLAKE_PASSWORD }}" ]] || { echo "Falta SNOWFLAKE_PASSWORD"; exit 1; }
+              [[ -n "${{ secrets.SNOWFLAKE_WAREHOUSE }}" ]] || { echo "Falta SNOWFLAKE_WAREHOUSE"; exit 1; }
+              ;;
+          esac
+          echo "Validación de secretos completada"
+
+  deploy-script-cloud-provider:
+    needs: detect-data-platform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       # Paso 13: Validar y ejecuta scripts de despliegue según el proveedor de nube
       - name: Run Deployment Script
+        env:
+          DATA_PLATFORM: ${{ needs.detect-data-platform.outputs.platform }}
         run: |
           set -euo pipefail
           SCRIPT_PATH="scripts/deploy_${{ env.CLOUD_PROVIDER }}.sh"
@@ -318,19 +450,208 @@ jobs:
             chmod +x "${SCRIPT_PATH}"
           fi
           echo "Script de despliegue validado: ${SCRIPT_PATH}"
-          echo "Ejecutando despliegue para ${{ env.CLOUD_PROVIDER }}..."
+          echo "Ejecutando despliegue para ${{ env.CLOUD_PROVIDER }} con ${DATA_PLATFORM}..."
+          export DATA_PLATFORM="${DATA_PLATFORM}"
+          export TERRAFORM_OUTPUTS="artifacts/terraform-outputs/terraform_outputs.json"
           bash "${SCRIPT_PATH}"
-          echo "Despliegue para ${{ env.CLOUD_PROVIDER }} completado"
+          echo "Despliegue para ${{ env.CLOUD_PROVIDER }} con ${DATA_PLATFORM} completado"
 
+rollback-data-platform-config:
+  needs: [configure-data-platform, detect-data-platform, deploy-infrastructure]
+  runs-on: ubuntu-latest
+  if: |
+    always() && 
+    needs.configure-data-platform.result == 'failure' &&
+    env.ENABLE_ROLLBACK == 'true'
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # AWS
+    - name: Configure AWS Credentials
+      if: env.CLOUD_PROVIDER == 'aws'
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.TF_VAR_region }}
+
+    # Azure
+    - name: Azure Login
+      if: env.CLOUD_PROVIDER == 'azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # GCP
+    - name: Authenticate to Google Cloud
+      if: env.CLOUD_PROVIDER == 'gcp'
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Setup Google Cloud CLI
+      if: env.CLOUD_PROVIDER == 'gcp'
+      uses: google-github-actions/setup-gcloud@v2
+
+    # Cleanup de configuraciones de plataforma de datos
+    - name: Cleanup Data Platform Configurations
+      run: |
+        set -euo pipefail
+        PLATFORM="${{ needs.detect-data-platform.outputs.platform }}"
+        
+        echo "🔄 Limpiando configuraciones de ${PLATFORM}..."
+        
+        case "${PLATFORM}" in
+          databricks)
+            echo "Instalando Databricks CLI..."
+            pip install databricks-cli
+            
+            # Configurar
+            databricks configure --token <<EOF
+            ${{ secrets.DATABRICKS_HOST }}
+            ${{ secrets.DATABRICKS_TOKEN }}
+            EOF
+            
+            # Eliminar montajes y configuraciones
+            echo "Eliminando scripts de configuración..."
+            databricks workspace delete /Shared/setup/mount_s3 || echo "Script no existe"
+            databricks workspace delete /Shared/setup/ -r || echo "Directorio no existe"
+            
+            echo "✅ Configuraciones de Databricks eliminadas"
+            ;;
+            
+          snowflake)
+            echo "Instalando SnowSQL..."
+            curl -O https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.28-linux_x86_64.bash
+            bash snowsql-1.2.28-linux_x86_64.bash
+            
+            # Crear config
+            mkdir -p ~/.snowsql
+            cat > ~/.snowsql/config <<EOF
+            [connections.prod]
+            accountname = ${{ secrets.SNOWFLAKE_ACCOUNT }}
+            username = ${{ secrets.SNOWFLAKE_USER }}
+            password = ${{ secrets.SNOWFLAKE_PASSWORD }}
+            EOF
+            
+            # Eliminar integraciones y stages
+            echo "Eliminando integraciones de almacenamiento..."
+            snowsql -c prod -q "DROP STAGE IF EXISTS s3_stage;" || echo "Stage no existe"
+            snowsql -c prod -q "DROP STORAGE INTEGRATION IF EXISTS s3_integration;" || echo "Integration no existe"
+            
+            echo "✅ Configuraciones de Snowflake eliminadas"
+            ;;
+        esac
+
+
+
+  rollback-on-failure:
+    needs: [deploy-script-cloud-provider]
+    runs-on: ubuntu-latest
+    if: failure() && env.ENABLE_ROLLBACK == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS Credentials
+        if: env.CLOUD_PROVIDER == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.TF_VAR_region }}
+
+      - name: Verify AWS Configuration
+        if: env.CLOUD_PROVIDER == 'aws'
+        run: |
+          echo "Verificando credenciales AWS para rollback..."
+          aws sts get-caller-identity
+          
+      - name: Azure Login
+        if: env.CLOUD_PROVIDER == 'azure'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Verify Azure Configuration
+        if: env.CLOUD_PROVIDER == 'azure'
+        run: |
+          echo "Verificando credenciales Azure para rollback..."
+          az account show
+          
+      - name: Authenticate to Google Cloud
+        if: env.CLOUD_PROVIDER == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Google Cloud CLI
+        if: env.CLOUD_PROVIDER == 'gcp'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify GCP Configuration
+        if: env.CLOUD_PROVIDER == 'gcp'
+        run: |
+          echo "Verificando credenciales GCP para rollback..."
+          gcloud config list
+          
+      - name: Terraform Rollback
+        run: |
+          set -euo pipefail
+          cd terraform/${{ env.CLOUD_PROVIDER }}
+          echo "Iniciando rollback de infraestructura..."
+          case "${{ env.CLOUD_PROVIDER }}" in
+            aws)
+              terraform init \
+                -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
+                -backend-config="region=${{ env.TF_VAR_region }}" \
+                -backend-config="dynamodb_table=${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}" \
+                -input=false
+              ;;
+            azure)
+              terraform init \
+                -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+                -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RESOURCE_GROUP }}" \
+                -backend-config="container_name=${{ secrets.TF_BACKEND_CONTAINER_NAME }}" \
+                -input=false
+              ;;
+            gcp)
+              terraform init \
+                -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
+                -input=false
+              ;;
+          esac
+          echo "Plan de destrucción:"
+          terraform plan -destroy
+          echo "Destruyendo recursos..."
+          terraform destroy -auto-approve
+          echo "Rollback completado exitosamente"
+
+      - name: Notify Rollback
+        if: always()
+        run: |
+          echo "Rollback ejecutado debido a fallas en el despliegue"
+          echo "Proveedor: ${{ env.CLOUD_PROVIDER }}"
+          echo "Región: ${{ env.TF_VAR_region }}"
+
+  maintenance-cleanup:
+    needs: deploy-script-cloud-provider
+    runs-on: ubuntu-latest
+    steps:
       # Paso 14: Cleanup
       - name: Cleanup Temporary Files
         if: always()
         run: |
           set +e 
           echo "Limpiando archivos temporales..."
-          if [[ -f /tmp/gcp_credentials.json ]]; then
-            rm -f /tmp/gcp_credentials.json
-          fi
+          find . -type f -name "*.tmp" -delete
+          rm -rf /tmp/* || true
           if [[ -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan ]]; then
             rm -f terraform/${{ env.CLOUD_PROVIDER }}/tfplan
           fi
