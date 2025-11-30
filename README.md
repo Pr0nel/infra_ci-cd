@@ -92,21 +92,21 @@ Asegúrate de agregar los siguientes secrets en Settings > Secrets and variables
 
 El pipeline se ejecuta automáticamente cuando:
 
-    - Se realiza un push al branch main.
-    - Realizas un Pull Request hacia main.
-    - Se activa manualmente desde la interfaz de GitHub Actions.
+- Se realiza un push al branch main.
+- Realizas un Pull Request hacia main.
+- Se activa manualmente desde la interfaz de GitHub Actions.
 
 Para ejecutarlo manualmente:
 
-    - Ve a la pestaña Actions en tu repositorio de GitHub.
-    - Selecciona el workflow "CI/CD Pipeline for Multi-Cloud Deployment".
-    - Haz clic en Run workflow.
-    - Selecciona el branch y confirma.
+- Ve a la pestaña Actions en tu repositorio de GitHub.
+- Selecciona el workflow "CI/CD Pipeline for Multi-Cloud Deployment".
+- Haz clic en Run workflow.
+- Selecciona el branch y confirma.
 
 Monitoreo:
 
-    - Los logs detallados están disponibles en la pestaña Actions.
-    - Cada paso muestra su estado (éxito, fallo, en progreso).
+- Los logs detallados están disponibles en la pestaña Actions.
+- Cada paso muestra su estado (éxito, fallo, en progreso).
     
 ---
 
