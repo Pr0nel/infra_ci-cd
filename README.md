@@ -193,19 +193,22 @@ El pipeline sigue los siguientes pasos:
   1. Haz un fork del repositorio.
    
   2. Crea una nueva rama:
-    ```
-    git checkout -b feature/nueva-funcionalidad
-    ```
+
+```bash
+git checkout -b feature/nueva-funcionalidad
+```
 
   3. Realiza tus cambios y haz commit:
-    ```
-    git commit -m "feat: Añadir nueva funcionalidad"
-    ```
+
+```bash
+git commit -m "feat: Añadir nueva funcionalidad"
+```
 
   4. Sube tus cambios:
-    ```
-    git push origin feature/nueva-funcionalidad
-    ```
+
+```bash
+git push origin feature/nueva-funcionalidad
+```
 
   5. Abre un Pull Request.
     
